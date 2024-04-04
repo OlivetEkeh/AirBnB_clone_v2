@@ -1,64 +1,88 @@
-$default_site_loc = '/etc/nginx/sites-available/default'
-$default_site = 'https://raw.githubusercontent.com/OlivetEkeh/AirBnB_clone_v2/main/config/default-site'
-$directory1 = '/data/web_static/releases/test/'
-$directory2 = '/data/web_static/shared/'
-$link = '/data/web_static/current'
+# Configures a web server for deployment of web_static.
 
-# Run apt-get update
-exec { 'apt-update':
-  command => '/usr/bin/apt-get update',
-  user    => root,
-}
+# Nginx configuration file
+$nginx_conf = "server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    add_header X-Served-By ${hostname};
+    root   /var/www/html;
+    index  index.html index.htm;
+    location /hbnb_static {
+        alias /data/web_static/current;
+        index index.html index.htm;
+    }
+    location /redirect_me {
+        return 301 http://github.com/OlivetEkeh/;
+    }
+    error_page 404 /404.html;
+    location /404 {
+      root /var/www/html;
+      internal;
+    }
+}"
 
-# Install nginx
 package { 'nginx':
-  ensure  => installed,
-  require => Exec['apt-update'],
-  user    => root,
+  ensure   => 'present',
+  provider => 'apt'
+} ->
+
+file { '/data':
+  ensure  => 'directory'
+} ->
+
+file { '/data/web_static':
+  ensure => 'directory'
+} ->
+
+file { '/data/web_static/releases':
+  ensure => 'directory'
+} ->
+
+file { '/data/web_static/releases/test':
+  ensure => 'directory'
+} ->
+
+file { '/data/web_static/shared':
+  ensure => 'directory'
+} ->
+
+file { '/data/web_static/releases/test/index.html':
+  ensure  => 'present',
+  content => "Holberton School Puppet\n"
+} ->
+
+file { '/data/web_static/current':
+  ensure => 'link',
+  target => '/data/web_static/releases/test'
+} ->
+
+exec { 'chown -R ubuntu:ubuntu /data/':
+  path => '/usr/bin/:/usr/local/bin/:/bin/'
 }
 
-# Create directories
-exec { 'create-dirs':
-  require => Package['nginx'],
-  command => "/usr/bin/mkdir -p ${directory1} ${directory2}",
-  user    => root,
-}
+file { '/var/www':
+  ensure => 'directory'
+} ->
 
-# Create index.html
-file {'create-index.html':
-  require => Exec['create-dirs'],
-  path    => '/data/web_static/releases/test/index.html',
-  content => '<h1>Hello this is puppet master!!!<h1/>',
-  user    => root,
-}
+file { '/var/www/html':
+  ensure => 'directory'
+} ->
 
-# Create symbolic link
-exec {'symlink':
-  require => File['create-index.html'],
-  command => "$/usr/bin/ln -sf ${directory1} ${link}",
-  user    => root,
-}
+file { '/var/www/html/index.html':
+  ensure  => 'present',
+  content => "Holberton School Nginx\n"
+} ->
 
-# Change owner
-exec {'chown':
-  require => Exec['symlink'],
-  command => "$/usr/bin/chown -hR ubuntu:ubuntu /data/",
-  user    => root,
-}
+file { '/var/www/html/404.html':
+  ensure  => 'present',
+  content => "Ceci n'est pas une page\n"
+} ->
 
-# Replace default site config
 file { '/etc/nginx/sites-available/default':
-  ensure  => file,
-  require => Package['nginx'],
-  user    => root,
-}-> exec { 'Replace config':
-  command => "/usr/bin/curl ${default_site} > ${default_site_loc}",
-  user    => root,
-}
+  ensure  => 'present',
+  content => $nginx_conf
+} ->
 
-# Start nginx 
-service {'nginx':
-  ensure  => running,
-  require => Exec['Replace config'],
-  user    => root,
+exec { 'nginx restart':
+  path => '/etc/init.d/'
 }
